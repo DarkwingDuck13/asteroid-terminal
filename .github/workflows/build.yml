@@ -1,0 +1,53 @@
+name: Build AsteroidOS Terminal
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Download AsteroidOS Qt6 ARM Toolchain
+        run: |
+          wget -r -l1 -np -nd -A "oecore-meta-toolchain-qt6*armv7vehf*.sh" https://release.asteroidos.org/nightlies/sdk/
+          chmod +x oecore-meta-toolchain-qt6*.sh
+          ./oecore-meta-toolchain-qt6*.sh -y
+
+      - name: Cross-Compile App
+        run: |
+          source /usr/local/oecore-x86_64/environment-setup-armv7vehf-neon-oe-linux-gnueabi
+          mkdir -p build && cd build
+          cmake .. -DCMAKE_INSTALL_PREFIX=/usr
+          make -j$(nproc)
+          make install DESTDIR=../pkg
+
+      - name: Package IPK
+        run: |
+          mkdir -p pkg/CONTROL
+          cat << 'EOF' > pkg/CONTROL/control
+          Package: asteroid-terminal
+          Version: 1.0.0
+          Section: user/utilities
+          Priority: optional
+          Architecture: armv7vehf-neon
+          Maintainer: DarkwingDuck13
+          Description: On-wrist cyberdeck terminal for AsteroidOS
+          EOF
+
+          tar -czf control.tar.gz -C pkg/CONTROL .
+          rm -rf pkg/CONTROL
+          tar -czf data.tar.gz -C pkg .
+          echo "2.0" > debian-binary
+          ar -r asteroid-terminal.ipk debian-binary control.tar.gz data.tar.gz
+
+      - name: Upload IPK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: asteroid-terminal-ipk
+          path: asteroid-terminal.ipk
