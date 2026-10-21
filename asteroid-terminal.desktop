@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Terminal
+Comment=On-Wrist Cyberdeck Terminal
+Exec=asteroid-terminal
+Icon=ios-code-working
+X-Asteroid-Center-Color=#00ff66
+X-Asteroid-Outer-Color=#002b11
+Type=Application
+Categories=Applications;
