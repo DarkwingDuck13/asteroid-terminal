@@ -14,6 +14,9 @@ int main(int argc, char *argv[]) {
     view.setSource(QUrl("qrc:/qml/main.qml"));
     view.setResizeMode(QQuickView::SizeRootObjectToView);
     view.showFullScreen();
+    
+    // Explicitly demand keyboard focus from the Wayland compositor
+    view.requestActivate();
 
     return app.exec();
 }
