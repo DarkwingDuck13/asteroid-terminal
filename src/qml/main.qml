@@ -7,9 +7,22 @@ Item {
     height: 400
     focus: true
 
+    // 1. Force active keyboard focus the moment the app loads
+    Component.onCompleted: {
+        root.forceActiveFocus()
+    }
+
     Rectangle {
         anchors.fill: parent
         color: "#050805"
+    }
+
+    // 2. Tapping anywhere on the screen re-grabs keyboard focus
+    MouseArea {
+        anchors.fill: parent
+        onClicked: {
+            root.forceActiveFocus()
+        }
     }
 
     Flickable {
@@ -17,7 +30,7 @@ Item {
         anchors.fill: parent
         anchors.margins: 40
         contentWidth: termText.width
-        contentHeight: termText.height
+        contentHeight: termText.height + cursor.height
         clip: true
 
         Text {
@@ -31,13 +44,29 @@ Item {
             textFormat: Text.PlainText
 
             onTextChanged: {
-                // Auto-scroll to bottom as new terminal output arrives
-                flick.contentY = Math.max(0, termText.height - flick.height)
+                flick.contentY = Math.max(0, termText.height - flick.height + 20)
+            }
+
+            // Blinking cursor to confirm focus
+            Rectangle {
+                id: cursor
+                width: 8
+                height: 14
+                color: "#00ff66"
+                anchors.left: parent.right
+                anchors.bottom: parent.bottom
+                visible: root.activeFocus
+
+                SequentialAnimation on opacity {
+                    loops: Animation.Infinite
+                    PropertyAnimation { to: 0; duration: 500 }
+                    PropertyAnimation { to: 1; duration: 500 }
+                }
             }
         }
     }
 
-    // Capture physical Bluetooth Keyboard events
+    // 3. Hardware Keyboard event routing
     Keys.onPressed: function(event) {
         if (event.modifiers & Qt.ControlModifier) {
             if (event.key === Qt.Key_C) { pty.sendKey("\x03"); event.accepted = true; return; }
