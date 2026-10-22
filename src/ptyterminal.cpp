@@ -29,12 +29,11 @@ PtyTerminal::PtyTerminal(QObject *parent) : QObject(parent) {
         connect(m_ptyNotifier, &QSocketNotifier::activated, this, &PtyTerminal::onPtyReadyRead);
     }
 
-    // Direct evdev keyboard watcher
     tryOpenKeyboard();
 
     m_kbdWatchTimer = new QTimer(this);
     connect(m_kbdWatchTimer, &QTimer::timeout, this, &PtyTerminal::tryOpenKeyboard);
-    m_kbdWatchTimer->start(2000); // Check every 2s in case keyboard re-connects
+    m_kbdWatchTimer->start(2000);
 }
 
 PtyTerminal::~PtyTerminal() {
@@ -44,12 +43,10 @@ PtyTerminal::~PtyTerminal() {
 
 void PtyTerminal::tryOpenKeyboard() {
     if (m_kbdFd >= 0) {
-        // Test if still connected
         char name[256] = {0};
         if (ioctl(m_kbdFd, EVIOCGNAME(sizeof(name)), name) >= 0) {
-            return; // Still alive
+            return;
         }
-        // Disconnected
         if (m_kbdNotifier) {
             delete m_kbdNotifier;
             m_kbdNotifier = nullptr;
@@ -58,7 +55,6 @@ void PtyTerminal::tryOpenKeyboard() {
         m_kbdFd = -1;
     }
 
-    // Scan /dev/input/event0 through 15 for a keyboard
     for (int i = 0; i < 16; ++i) {
         QString devPath = QString("/dev/input/event%1").arg(i);
         int fd = open(devPath.toUtf8().constData(), O_RDONLY | O_NONBLOCK);
@@ -70,7 +66,6 @@ void PtyTerminal::tryOpenKeyboard() {
                     m_kbdFd = fd;
                     m_kbdNotifier = new QSocketNotifier(m_kbdFd, QSocketNotifier::Read, this);
                     connect(m_kbdNotifier, &QSocketNotifier::activated, this, &PtyTerminal::onKbdReadyRead);
-                    qDebug() << "Directly attached to hardware keyboard:" << devPath << devName;
                     return;
                 }
             }
@@ -89,7 +84,6 @@ void PtyTerminal::onKbdReadyRead() {
 }
 
 void PtyTerminal::handleKeyEvent(int code, int value) {
-    // value: 0=release, 1=press, 2=autorepeat
     if (code == KEY_LEFTSHIFT || code == KEY_RIGHTSHIFT) {
         m_shiftPressed = (value != 0);
         return;
@@ -99,9 +93,8 @@ void PtyTerminal::handleKeyEvent(int code, int value) {
         return;
     }
 
-    if (value == 0) return; // Ignore releases for normal keys
+    if (value == 0) return;
 
-    // Handle Ctrl shortcuts
     if (m_ctrlPressed) {
         if (code == KEY_C) { sendKey("\x03"); return; }
         if (code == KEY_D) { sendKey("\x04"); return; }
@@ -109,10 +102,9 @@ void PtyTerminal::handleKeyEvent(int code, int value) {
         if (code == KEY_Z) { sendKey("\x1a"); return; }
     }
 
-    // Special Keys
     switch (code) {
         case KEY_ENTER:      sendKey("\r"); return;
-        case KEY_BACKSPACE:  sendKey("\x7f"); return;
+        case KEY_BACKSPACE:  sendKey("\x7f"); return; // Standard DEL/BS
         case KEY_TAB:        sendKey("\t"); return;
         case KEY_ESC:        sendKey("\x1b"); return;
         case KEY_UP:         sendKey("\x1b[A"); return;
@@ -122,8 +114,6 @@ void PtyTerminal::handleKeyEvent(int code, int value) {
         case KEY_SPACE:      sendKey(" "); return;
     }
 
-    // Letters A-Z
-    if (code >= KEY_Q && code <= KEY_P) { /* row 1 */ }
     const char *lower = "  1234567890-=\b\tqwertyuiop[]\r asdfghjkl;'` \\zxcvbnm,./";
     const char *upper = "  !@#$%^&*()_+\b\tQWERTYUIOP{}\r ASDFGHJKL:\"~ |ZXCVBNM<>?";
 
@@ -141,8 +131,22 @@ void PtyTerminal::onPtyReadyRead() {
     ssize_t bytesRead = read(m_masterFd, buf, sizeof(buf) - 1);
     if (bytesRead > 0) {
         buf[bytesRead] = '\0';
-        QString raw = QString::fromUtf8(buf);
-        m_textBuffer.append(cleanAnsi(raw));
+        QString clean = cleanAnsi(QString::fromUtf8(buf));
+
+        // Process terminal characters (including backspaces)
+        for (int i = 0; i < clean.length(); ++i) {
+            QChar c = clean[i];
+            if (c == '\b') {
+                // If shell echoes backspace, delete the last character from the buffer!
+                if (!m_textBuffer.isEmpty() && m_textBuffer.back() != '\n') {
+                    m_textBuffer.chop(1);
+                }
+            } else if (c == '\r') {
+                // Ignore raw carriage returns
+            } else {
+                m_textBuffer.append(c);
+            }
+        }
 
         if (m_textBuffer.length() > 8000) {
             m_textBuffer = m_textBuffer.right(5000);
