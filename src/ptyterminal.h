@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <QSocketNotifier>
+#include <QTimer>
 
 class PtyTerminal : public QObject {
     Q_OBJECT
@@ -21,12 +22,22 @@ signals:
 
 private slots:
     void onPtyReadyRead();
+    void onKbdReadyRead();
+    void tryOpenKeyboard();
 
 private:
     int m_masterFd = -1;
     pid_t m_childPid = -1;
-    QSocketNotifier *m_notifier = nullptr;
+    QSocketNotifier *m_ptyNotifier = nullptr;
     QString m_textBuffer;
 
+    // Direct hardware evdev input
+    int m_kbdFd = -1;
+    QSocketNotifier *m_kbdNotifier = nullptr;
+    QTimer *m_kbdWatchTimer = nullptr;
+    bool m_shiftPressed = false;
+    bool m_ctrlPressed = false;
+
+    void handleKeyEvent(int code, int value);
     QString cleanAnsi(const QString &input);
 };
